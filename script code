@@ -1,0 +1,166 @@
+-- =============================================
+--  PROSPECTING LOADOUT SWAPPER (V19 - Bulletproof)
+-- =============================================
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- The Remotes
+local EquipRemote = ReplicatedStorage.Remotes.Inventory.EquipLoadout
+local MuseumRemote = ReplicatedStorage.Remotes.Museum.LoadMuseum
+
+-- [ CONFIGURATION ]
+local Config = {
+    TriggerThreshold = 1000, 
+    
+    SellEquipLoadout = "SELL",
+    FarmEquipLoadout = "FARM MYTH", 
+    
+    SellMuseumID = 1, -- 1 = sell
+    FarmMuseumID = 2, -- 2 = luck
+    
+    isEnabled = false,
+    isWaitingForSell = false,
+}
+
+-- [ THE REMOTE SWAPPING LOGIC ]
+local function swapEquipment(loadoutName)
+    task.spawn(function()
+        pcall(function()
+            EquipRemote:InvokeServer(loadoutName)
+            print("✅ Equipped Equipment: " .. loadoutName)
+        end)
+    end)
+end
+
+local function swapMuseum(museumID)
+    task.spawn(function()
+        pcall(function()
+            MuseumRemote:FireServer(museumID)
+            print("✅ Equipped Museum ID: " .. museumID)
+        end)
+    end)
+end
+
+-- [ UI SETUP ]
+local repo = 'https://raw.githubusercontent.com/metricxc/LinoriaLib/main/'
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local Window = Library:CreateWindow({
+    Title = 'Prospecting | Loadout Swapper (Final)',
+    Center = true,
+    AutoShow = true,
+})
+
+local Tabs = { Main = Window:AddTab('Main') }
+local MainGroup = Tabs.Main:AddLeftGroupbox('Settings')
+local TestGroup = Tabs.Main:AddLeftGroupbox('Manual Testing')
+local UnloadGroup = Tabs.Main:AddRightGroupbox('Danger Zone')
+
+MainGroup:AddToggle('EnableToggle', {
+    Text = 'Enable Auto-Swap',
+    Default = false,
+    Callback = function(Value) 
+        Config.isEnabled = Value 
+        print("Auto-Swap Enabled:", Value)
+    end
+})
+
+MainGroup:AddSlider('ThresholdSlider', {
+    Text = 'Sell Trigger Threshold (Items)',
+    Default = 1000, Min = 10, Max = 1200, Rounding = 0,
+    Callback = function(Value) Config.TriggerThreshold = Value end
+})
+
+MainGroup:AddDropdown('SellEquipDrop', {
+    Text = 'Selling Equipment Loadout',
+    Values = {'SELL', 'FARM', 'FARM MYTH'}, 
+    Default = 'SELL',
+    Callback = function(Value) Config.SellEquipLoadout = Value end
+})
+
+MainGroup:AddDropdown('FarmEquipDrop', {
+    Text = 'Farming Equipment Loadout',
+    Values = {'FARM', 'FARM MYTH', 'SELL'}, 
+    Default = 'FARM MYTH',
+    Callback = function(Value) Config.FarmEquipLoadout = Value end
+})
+
+MainGroup:AddSlider('SellMuseumSlider', {
+    Text = 'Selling Museum ID (1=sell)',
+    Default = 1, Min = 1, Max = 5, Rounding = 0,
+    Callback = function(Value) Config.SellMuseumID = Value end
+})
+
+MainGroup:AddSlider('FarmMuseumSlider', {
+    Text = 'Farming Museum ID (2=luck)',
+    Default = 2, Min = 1, Max = 5, Rounding = 0,
+    Callback = function(Value) Config.FarmMuseumID = Value end
+})
+
+-- MANUAL TEST BUTTONS
+TestGroup:AddButton({
+    Text = 'TEST: Equip SELL Loadouts',
+    Func = function()
+        swapEquipment(Config.SellEquipLoadout)
+        swapMuseum(Config.SellMuseumID)
+    end
+})
+
+TestGroup:AddButton({
+    Text = 'TEST: Equip FARM Loadouts',
+    Func = function()
+        swapEquipment(Config.FarmEquipLoadout)
+        swapMuseum(Config.FarmMuseumID)
+    end
+})
+
+UnloadGroup:AddButton({
+    Text = 'Unload Script',
+    Func = function()
+        Config.isEnabled = false
+        Library:Unload()
+    end
+})
+
+-- [ THE AUTOMATION LOOP ]
+task.spawn(function()
+    while task.wait(1) do
+        if Config.isEnabled then
+            -- Safely find the inventory text label anywhere in the PlayerGui
+            local inventoryLabel = LocalPlayer.PlayerGui:FindFirstChild("InventorySpace", true)
+            
+            if inventoryLabel then
+                local success, currentCount = pcall(function()
+                    -- Reads "645/1,127" and extracts just the "645"
+                    local text = inventoryLabel.Text
+                    local firstNumber = string.match(text, "%d+") 
+                    return tonumber(firstNumber)
+                end)
+
+                if success and currentCount then
+                    -- 1. Swap to SELL if inventory hits the threshold
+                    if not Config.isWaitingForSell and currentCount >= Config.TriggerThreshold then
+                        print("Threshold reached (" .. currentCount .. ")! Swapping to SELL.")
+                        swapEquipment(Config.SellEquipLoadout)
+                        task.wait(0.5) 
+                        swapMuseum(Config.SellMuseumID)
+                        Config.isWaitingForSell = true
+                    
+                    -- 2. Swap back to FARM if inventory drops below the threshold
+                    elseif Config.isWaitingForSell and currentCount < Config.TriggerThreshold then
+                        print("Inventory dropped (" .. currentCount .. ")! Swapping to FARM.")
+                        swapEquipment(Config.FarmEquipLoadout)
+                        task.wait(0.5)
+                        swapMuseum(Config.FarmMuseumID)
+                        Config.isWaitingForSell = false
+                    end
+                end
+            else
+                -- If the label isn't found, it just silently waits instead of crashing
+            end
+        end
+    end
+end)
+
+print("Loadout Swapper V19 Loaded. You are ready to go!")
